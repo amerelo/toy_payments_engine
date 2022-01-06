@@ -1,8 +1,8 @@
-mod read_csv;
+mod csv;
 mod data_types;
 
-
-
 fn main() {
-    read_csv::read_csv();
+    if let Err(err) = csv::read_csv() {
+        println!("error running example: {}", err);
+    }
 }
