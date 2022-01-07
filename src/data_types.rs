@@ -1,21 +1,24 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashSet, HashMap},
-    hash::{Hash, Hasher},
+    cmp::PartialEq,
+    collections::{HashMap, HashSet},
     error::Error,
+    hash::{Hash, Hasher},
 };
+
+use log::error;
 
 #[derive(Debug)]
 pub struct Data {
-    clients: HashMap<u16, Account>,
-    txs: HashSet<Transaction>,
-    disputed_tr: HashSet<u32>,
+    pub clients: HashMap<u16, Account>,
+    pub txs: HashSet<Transaction>,
+    pub disputed_tr: HashSet<u32>,
 }
 
 #[derive(Debug)]
 pub enum Successful {
     True,
-    False
+    False,
 }
 
 impl Data {
@@ -43,15 +46,14 @@ impl Data {
     }
 
     pub fn make_transaction(&mut self, tr: &Transaction) -> Successful {
-
         // transaction Checks
         // - check if client exist and create one if not
         // - check if client account is locked
         match self.clients.get(&tr.client) {
             Some(account) => {
                 if account.is_lock() {
-                    // TODO: log erro
-                    return Successful::False
+                    error!("account {:?} lock", tr.client);
+                    return Successful::False;
                 }
             }
             None => {
@@ -62,16 +64,24 @@ impl Data {
         let account = if let Some(account) = self.clients.get_mut(&tr.client) {
             account
         } else {
-            // TODO: log
-            return Successful::False
+            error!("account {:?} dose not exist", tr.client);
+            return Successful::False;
         };
 
         match tr.transaction_type {
             TransactionType::Deposit => {
-                account.deposit(tr.amount)
+                if let Some(amount) = &tr.amount {
+                    account.deposit(*amount)
+                } else {
+                    return Successful::False;
+                }
             }
             TransactionType::Withdrawal => {
-                account.withdrawal(tr.amount)
+                if let Some(amount) = &tr.amount {
+                    account.withdrawal(*amount)
+                } else {
+                    return Successful::False;
+                }
             }
             TransactionType::Dispute => {
                 match self.txs.get(&tr) {
@@ -82,12 +92,12 @@ impl Data {
 
                             Successful::True
                         } else {
-                            // TODO: LOG ERRRO
+                            error!("account {:?} dose not exist", tr.client);
                             Successful::False
                         }
                     }
                     None => {
-                        // TODO: log error
+                        error!("transaction {:?} dose not exist", tr.tx);
                         Successful::False
                     }
                 }
@@ -105,7 +115,7 @@ impl Data {
                         }
                     }
                     None => {
-                        // TODO: log error
+                        error!("transaction {:?} dose not exist", tr.tx);
                         Successful::False
                     }
                 }
@@ -125,7 +135,7 @@ impl Data {
                         }
                     }
                     None => {
-                        // TODO: log error
+                        error!("transaction {:?} dose not exist", tr.tx);
                         Successful::False
                     }
                 }
@@ -134,21 +144,18 @@ impl Data {
     }
 
     pub fn execute_transaction(&mut self, tr: Transaction) {
-        if !self.txs.contains(&tr) {
-            if let Successful::True = self.make_transaction(&tr) {
-                self.txs.insert(tr);
-            }
+        if let Successful::True = self.make_transaction(&tr) {
+            self.txs.insert(tr);
         }
     }
-
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Account {
-    available: f64,
-    held: f64,
-    total: f64,
-    locked: bool,
+    pub available: f64,
+    pub held: f64,
+    pub total: f64,
+    pub locked: bool,
 }
 
 impl Account {
@@ -161,7 +168,11 @@ impl Account {
         }
     }
 
-    pub fn write_record<W>(&self, client_id: u16, wtr: &mut csv::Writer<W>) -> Result<(), Box<dyn Error>>
+    pub fn write_record<W>(
+        &self,
+        client_id: u16,
+        wtr: &mut csv::Writer<W>,
+    ) -> Result<(), Box<dyn Error>>
     where
         W: std::io::Write,
     {
@@ -176,11 +187,10 @@ impl Account {
         Ok(())
     }
 
-
     pub fn deposit(&mut self, amount: f64) -> Successful {
         if amount.is_sign_negative() {
-            // TODO: log error
-            return Successful::False
+            error!("deposit negative amount {}", amount);
+            return Successful::False;
         }
 
         self.available += amount;
@@ -191,13 +201,13 @@ impl Account {
 
     pub fn withdrawal(&mut self, amount: f64) -> Successful {
         if amount.is_sign_negative() {
-            // TODO: log error
-            return Successful::False
+            error!("withdrawal negative amount {}", amount);
+            return Successful::False;
         }
 
         if self.available < amount {
-            // TODO: log error
-            return Successful::False
+            error!("withdrawal more than available amount in account");
+            return Successful::False;
         }
 
         self.available -= amount;
@@ -207,46 +217,58 @@ impl Account {
     }
 
     pub fn dispute(&mut self, disputed_tr: &Transaction) -> Successful {
-        match disputed_tr.transaction_type {
+        match &disputed_tr.transaction_type {
             TransactionType::Deposit => {
-                self.available -= disputed_tr.amount;
-                self.held += disputed_tr.amount;
+                if let Some(amount) = &disputed_tr.amount {
+                    self.available -= *amount;
+                    self.held += *amount;
 
-                Successful::True
+                    Successful::True
+                } else {
+                    Successful::False
+                }
             }
-            _ => {
-                // TODO: log Error
+            tr_type => {
+                error!("TransactionType invalid for dispute {:?}", tr_type);
                 Successful::False
             }
         }
     }
 
     pub fn resolve(&mut self, disputed_tr: &Transaction) -> Successful {
-        match disputed_tr.transaction_type {
+        match &disputed_tr.transaction_type {
             TransactionType::Deposit => {
-                self.available += disputed_tr.amount;
-                self.held -= disputed_tr.amount;
+                if let Some(amount) = &disputed_tr.amount {
+                    self.available += *amount;
+                    self.held -= *amount;
 
-                Successful::True
+                    Successful::True
+                } else {
+                    Successful::False
+                }
             }
-            _ => {
-                // TODO: log Error
+            tr_type => {
+                error!("TransactionType invalid for resolve {:?}", tr_type);
                 Successful::False
             }
         }
     }
 
     pub fn chargeback(&mut self, disputed_tr: &Transaction) -> Successful {
-        match disputed_tr.transaction_type {
+        match &disputed_tr.transaction_type {
             TransactionType::Deposit => {
-                self.held -= disputed_tr.amount;
-                self.total -= disputed_tr.amount;
-                self.locked = true;
+                if let Some(amount) = &disputed_tr.amount {
+                    self.held -= *amount;
+                    self.total -= *amount;
+                    self.locked = true;
 
-                Successful::True
+                    Successful::True
+                } else {
+                    Successful::False
+                }
             }
-            _ => {
-                // TODO: log Error
+            tr_type => {
+                error!("TransactionType invalid for chargeback {:?}", tr_type);
                 Successful::False
             }
         }
@@ -261,9 +283,9 @@ impl Account {
 pub struct Transaction {
     #[serde(rename(deserialize = "type"))]
     pub transaction_type: TransactionType,
-    pub  client: u16,
-    pub  tx: u32,
-    pub  amount: f64,
+    pub client: u16,
+    pub tx: u32,
+    pub amount: Option<f64>,
 }
 
 impl Eq for Transaction {}

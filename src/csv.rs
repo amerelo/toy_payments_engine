@@ -1,11 +1,9 @@
 use std::error::Error;
 
-
-use crate::data_types::{Transaction, Data};
+use crate::data_types::{Data, Transaction};
 use std::env;
 
 pub fn read_csv() -> Result<(), Box<dyn Error>> {
-
     let args: Vec<String> = env::args().collect();
 
     let mut rdr = csv::ReaderBuilder::new()
@@ -27,13 +25,7 @@ pub fn read_csv() -> Result<(), Box<dyn Error>> {
 fn write_csv(data: &mut Data) -> Result<(), Box<dyn Error>> {
     let mut wtr = csv::Writer::from_writer(std::io::stdout());
 
-    wtr.write_record(&[
-        "client",
-        "available",
-        "held",
-        "total",
-        "locked",
-    ])?;
+    wtr.write_record(&["client", "available", "held", "total", "locked"])?;
 
     data.write_record(&mut wtr)?;
 
