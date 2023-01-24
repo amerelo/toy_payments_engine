@@ -8,6 +8,9 @@ use std::{
 
 use log::error;
 
+use rust_decimal::prelude::*;
+use rust_decimal_macros::dec;
+
 #[derive(Debug)]
 pub struct Data {
     pub clients: HashMap<u16, Account>,
@@ -152,18 +155,18 @@ impl Data {
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Account {
-    pub available: f64,
-    pub held: f64,
-    pub total: f64,
+    pub available: Decimal,
+    pub held: Decimal,
+    pub total: Decimal,
     pub locked: bool,
 }
 
 impl Account {
     pub fn new() -> Self {
         Self {
-            available: 0.0,
-            held: 0.0,
-            total: 0.0,
+            available: dec!(0.0),
+            held: dec!(0.0),
+            total: dec!(0.0),
             locked: false,
         }
     }
@@ -187,7 +190,7 @@ impl Account {
         Ok(())
     }
 
-    pub fn deposit(&mut self, amount: f64) -> Successful {
+    pub fn deposit(&mut self, amount: Decimal) -> Successful {
         if amount.is_sign_negative() {
             error!("deposit negative amount {}", amount);
             return Successful::False;
@@ -199,7 +202,7 @@ impl Account {
         Successful::True
     }
 
-    pub fn withdrawal(&mut self, amount: f64) -> Successful {
+    pub fn withdrawal(&mut self, amount: Decimal) -> Successful {
         if amount.is_sign_negative() {
             error!("withdrawal negative amount {}", amount);
             return Successful::False;
@@ -285,7 +288,7 @@ pub struct Transaction {
     pub transaction_type: TransactionType,
     pub client: u16,
     pub tx: u32,
-    pub amount: Option<f64>,
+    pub amount: Option<Decimal>,
 }
 
 impl Eq for Transaction {}
